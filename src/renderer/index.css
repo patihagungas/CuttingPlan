@@ -34,3 +34,12 @@ input[type=number]::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
+
+/* Electron: allow text selection and input everywhere */
+input, textarea, select {
+  -webkit-user-select: text;
+  user-select: text;
+}
+* {
+  -webkit-user-drag: none;
+}

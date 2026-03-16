@@ -102,8 +102,8 @@ export function SectionCutListEditor({ items, onChange }: Props) {
                 </td>
                 <td className="px-2 py-1 text-center">
                   <div className="flex items-center justify-center gap-1">
-                    <button onClick={() => duplicate(item)} title="Duplicate" className="text-slate-400 hover:text-blue-600 px-1">⧉</button>
-                    <button onClick={() => remove(item.id)} title="Delete" className="text-slate-400 hover:text-red-600 px-1">✕</button>
+                    <button onClick={() => duplicate(item)} title="Duplicate" className="text-slate-400 hover:text-blue-600 px-1 rounded hover:bg-blue-50">⧉</button>
+                    <button onClick={() => remove(item.id)} title="Delete row" className="text-red-400 hover:text-white hover:bg-red-500 font-bold px-1.5 py-0.5 rounded text-xs transition-colors">✕</button>
                   </div>
                 </td>
               </tr>

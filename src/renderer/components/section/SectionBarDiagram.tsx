@@ -10,17 +10,19 @@ const PIECE_COLORS = [
 interface Props {
   bar: BarResult
   colorMap: Map<string, string>
+  zoom?: number
 }
 
 const BAR_HEIGHT = 44
 const LABEL_MAX = 10
+const BASE_W = 520
 
-export function SectionBarDiagram({ bar, colorMap }: Props) {
+export function SectionBarDiagram({ bar, colorMap, zoom = 1 }: Props) {
   const total = bar.stockLength
-  const W = 520
+  const W = BASE_W * zoom
 
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-3">
+    <div className="bg-white border border-slate-200 rounded-lg p-3 overflow-x-auto">
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-semibold text-slate-600">
           Bar {bar.barIndex} — {(bar.stockLength / 1000).toFixed(1)} m
@@ -31,7 +33,7 @@ export function SectionBarDiagram({ bar, colorMap }: Props) {
         </div>
       </div>
 
-      <svg width="100%" viewBox={`0 0 ${W} ${BAR_HEIGHT + 20}`} className="overflow-visible">
+      <svg width={W} viewBox={`0 0 ${W} ${BAR_HEIGHT + 20}`} className="overflow-visible">
         {/* Background bar */}
         <rect x={0} y={0} width={W} height={BAR_HEIGHT} fill="#F1F5F9" rx={4} />
 

@@ -16,6 +16,7 @@ interface Props {
 
 export function PlateResultPanel({ result, items }: Props) {
   const [activeIdx, setActiveIdx] = useState(0)
+  const [zoom, setZoom] = useState(1)
 
   const colorMap = new Map<string, string>()
   items.forEach((item, idx) => colorMap.set(item.id, PIECE_COLORS[idx % PIECE_COLORS.length]))
@@ -74,7 +75,13 @@ export function PlateResultPanel({ result, items }: Props) {
           {activePlate && (
             <div className="p-4 flex gap-4">
               <div className="flex-shrink-0">
-                <PlateCanvas plate={activePlate} colorMap={colorMap} />
+                <div className="flex items-center gap-2 mb-2">
+                  <button onClick={() => setZoom(z => Math.max(0.25, +(z - 0.25).toFixed(2)))} className="w-7 h-7 rounded border border-slate-300 text-slate-600 hover:bg-slate-100 font-bold text-base leading-none">−</button>
+                  <span className="text-xs text-slate-500 w-10 text-center">{Math.round(zoom * 100)}%</span>
+                  <button onClick={() => setZoom(z => Math.min(4, +(z + 0.25).toFixed(2)))} className="w-7 h-7 rounded border border-slate-300 text-slate-600 hover:bg-slate-100 font-bold text-base leading-none">+</button>
+                  <button onClick={() => setZoom(1)} className="text-xs text-slate-400 hover:text-slate-600 px-1">Reset</button>
+                </div>
+                <PlateCanvas plate={activePlate} colorMap={colorMap} zoom={zoom} />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-semibold text-slate-600 mb-2">

@@ -1,4 +1,4 @@
-import type { PlateItem, StockPlate, PlacedRect, PlateResult, PlatePlanResult, Contour2D } from '../types/plate'
+import type { PlateItem, StockPlate, PlacedRect, PlateResult, PlatePlanResult, Contour2D, BoltHole } from '../types/plate'
 
 interface FreeRect {
   x: number
@@ -15,6 +15,7 @@ interface PieceToPlace {
   height: number
   canRotate: boolean
   contour?: Contour2D[]
+  boltHoles?: BoltHole[]
 }
 
 interface ScoreResult {
@@ -133,11 +134,17 @@ function packOnePlate(
     const pw = best.placedWidth + kerf
     const ph = best.placedHeight + kerf
 
-    // Rotate contour 90° CW if piece was rotated: new_x = old_y, new_y = originalWidth - old_x
+    // Rotate contour and bolt holes 90° CW if piece was rotated: new_x = old_y, new_y = origW - old_x
     let placedContour = piece.contour
-    if (best.rotated && piece.contour && piece.contour.length >= 3) {
+    let placedHoles = piece.boltHoles
+    if (best.rotated) {
       const origW = piece.width
-      placedContour = piece.contour.map(pt => ({ x: pt.y, y: origW - pt.x }))
+      if (piece.contour && piece.contour.length >= 3) {
+        placedContour = piece.contour.map(pt => ({ x: pt.y, y: origW - pt.x }))
+      }
+      if (piece.boltHoles && piece.boltHoles.length > 0) {
+        placedHoles = piece.boltHoles.map(h => ({ x: h.y, y: origW - h.x, diameter: h.diameter }))
+      }
     }
 
     placements.push({
@@ -150,6 +157,7 @@ function packOnePlate(
       height: best.placedHeight,
       rotated: best.rotated,
       contour: placedContour,
+      boltHoles: placedHoles,
     })
 
     // Split ALL free rects that overlap with the placed bounding box (including kerf)
@@ -183,6 +191,7 @@ export function runGuillotineCut(
         height: item.height,
         canRotate: item.canRotate,
         contour: item.contour,
+        boltHoles: item.boltHoles,
       })
     }
   }

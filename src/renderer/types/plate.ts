@@ -3,6 +3,12 @@ export interface Contour2D {
   y: number
 }
 
+export interface BoltHole {
+  x: number
+  y: number
+  diameter: number
+}
+
 export interface PlateItem {
   id: string
   partName: string
@@ -13,7 +19,8 @@ export interface PlateItem {
   quantity: number
   canRotate: boolean
   mark: string
-  contour?: Contour2D[]  // polygon points relative to piece origin (0,0)
+  contour?: Contour2D[]   // polygon points relative to piece origin (0,0)
+  boltHoles?: BoltHole[]  // bolt hole positions relative to piece origin (0,0)
 }
 
 export interface StockPlate {
@@ -40,7 +47,8 @@ export interface PlacedRect {
   width: number
   height: number
   rotated: boolean
-  contour?: Contour2D[]  // polygon points relative to piece origin (0,0), after rotation
+  contour?: Contour2D[]   // polygon points relative to piece origin (0,0), after rotation
+  boltHoles?: BoltHole[]  // bolt hole positions relative to piece origin (0,0), after rotation
 }
 
 export interface PlateResult {

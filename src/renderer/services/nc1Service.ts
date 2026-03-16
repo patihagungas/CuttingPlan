@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import type { SectionItem } from '../types/section'
-import type { PlateItem } from '../types/plate'
+import type { PlateItem, BoltHole } from '../types/plate'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -125,30 +125,46 @@ export function parseNc1(buffer: ArrayBuffer): Nc1ParseResult {
       continue
     }
 
-    // Skip blank lines between sections
+    // Skip blank lines between data block and sections
     while (i < rawLines.length && rawLines[i].trim() === '') i++
 
-    // AK section (contour)
+    // AK section (outer contour)
+    // Format: first line is "v  X  Y  ..." subsequent lines are "X  Y  ..."
     const contour: Nc1Contour[] = []
     if (i < rawLines.length && rawLines[i].trim() === 'AK') {
       i++ // skip "AK"
       while (i < rawLines.length) {
         const akLine = rawLines[i].trim()
-        if (akLine === 'BO' || akLine === 'EN' || akLine.startsWith('**')) break
+        // Stop at any section header
+        if (akLine === 'IK' || akLine === 'BO' || akLine === 'EN' || akLine.startsWith('**')) break
         i++
-        if (akLine.startsWith('v')) {
-          const parts = akLine.split(/\s+/).filter(Boolean)
-          if (parts.length >= 3) {
-            contour.push({ x: parseNum(parts[1]), y: parseNum(parts[2]) })
-          }
+        if (akLine === '') continue
+        const parts = akLine.split(/\s+/).filter(Boolean)
+        if (akLine.startsWith('v') && parts.length >= 3) {
+          // First line format: v  X  Y  ...
+          contour.push({ x: parseNum(parts[1]), y: parseNum(parts[2]) })
+        } else if (parts.length >= 2 && /^-?\d/.test(parts[0])) {
+          // Subsequent lines format: X  Y  ...
+          contour.push({ x: parseNum(parts[0]), y: parseNum(parts[1]) })
         }
+      }
+    }
+
+    // Skip IK section (inner contours / cutouts — not used for nesting)
+    while (i < rawLines.length && rawLines[i].trim() === '') i++
+    if (i < rawLines.length && rawLines[i].trim() === 'IK') {
+      i++ // skip "IK"
+      while (i < rawLines.length) {
+        const l = rawLines[i].trim()
+        if (l === 'BO' || l === 'EN' || l.startsWith('**')) break
+        i++
       }
     }
 
     // Skip blank lines before BO
     while (i < rawLines.length && rawLines[i].trim() === '') i++
 
-    // BO section (bolt holes)
+    // BO section (bolt holes) — all lines start with "v  Xs  Y  D"
     const boltHoles: Nc1BoltHole[] = []
     if (i < rawLines.length && rawLines[i].trim() === 'BO') {
       i++ // skip "BO"
@@ -158,7 +174,7 @@ export function parseNc1(buffer: ArrayBuffer): Nc1ParseResult {
         i++
         if (boLine.startsWith('v')) {
           const parts = boLine.split(/\s+/).filter(Boolean)
-          // "v  80.51s  45.00  26.00" → x=80.51, y=45.00, d=26.00
+          // "v  80.51s  45.00  26.00"  (X suffix can be 's' or 'o')
           if (parts.length >= 4) {
             boltHoles.push({
               x: parseNum(parts[1]),
@@ -170,8 +186,7 @@ export function parseNc1(buffer: ArrayBuffer): Nc1ParseResult {
       }
     }
 
-    // Skip blank lines then EN
-    while (i < rawLines.length && rawLines[i].trim() === '') i++
+    // Advance to EN
     while (i < rawLines.length && rawLines[i].trim() !== 'EN') i++
     if (i < rawLines.length) i++ // skip "EN"
 
@@ -216,12 +231,29 @@ export function parseNc1(buffer: ArrayBuffer): Nc1ParseResult {
         continue
       }
 
-      // Normalize contour to piece origin (0,0)
+      // Normalize contour and bolt holes to piece origin (0,0)
       let contour: { x: number; y: number }[] | undefined
+      let minX = 0, minY = 0
       if (p.contour.length >= 3) {
-        const minX = Math.min(...p.contour.map(pt => pt.x))
-        const minY = Math.min(...p.contour.map(pt => pt.y))
-        contour = p.contour.map(pt => ({ x: pt.x - minX, y: pt.y - minY }))
+        minX = Math.min(...p.contour.map(pt => pt.x))
+        minY = Math.min(...p.contour.map(pt => pt.y))
+        let pts = p.contour.map(pt => ({ x: pt.x - minX, y: pt.y - minY }))
+        // Strip duplicate closing point (NC1 files repeat the first point at the end)
+        const first = pts[0], last = pts[pts.length - 1]
+        if (Math.abs(first.x - last.x) < 0.01 && Math.abs(first.y - last.y) < 0.01) {
+          pts = pts.slice(0, -1)
+        }
+        if (pts.length >= 3) contour = pts
+      }
+
+      // Normalize bolt holes with same origin offset as contour
+      let boltHoles: BoltHole[] | undefined
+      if (p.boltHoles.length > 0) {
+        boltHoles = p.boltHoles.map(h => ({
+          x: h.x - minX,
+          y: h.y - minY,
+          diameter: h.diameter,
+        }))
       }
 
       plates.push({
@@ -235,6 +267,7 @@ export function parseNc1(buffer: ArrayBuffer): Nc1ParseResult {
         canRotate: true,
         mark: p.pieceMark,
         contour,
+        boltHoles,
       })
     } else {
       // Section steel piece

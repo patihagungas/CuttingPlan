@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { SectionPlanResult, SectionItem } from '../../types/section'
 import { StatBadge, UtilizationBadge } from '../shared/Badge'
 import { SectionBarDiagram } from './SectionBarDiagram'
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export function SectionResultPanel({ result, items }: Props) {
+  const [zoom, setZoom] = useState(1)
   // Build color map by pieceId (stable per item)
   const colorMap = new Map<string, string>()
   items.forEach((item, idx) => {
@@ -49,8 +51,15 @@ export function SectionResultPanel({ result, items }: Props) {
 
       {/* Per-bar diagrams */}
       <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-500 font-medium">Zoom:</span>
+          <button onClick={() => setZoom(z => Math.max(0.25, +(z - 0.25).toFixed(2)))} className="w-7 h-7 rounded border border-slate-300 text-slate-600 hover:bg-slate-100 font-bold text-base leading-none">−</button>
+          <span className="text-xs text-slate-500 w-10 text-center">{Math.round(zoom * 100)}%</span>
+          <button onClick={() => setZoom(z => Math.min(4, +(z + 0.25).toFixed(2)))} className="w-7 h-7 rounded border border-slate-300 text-slate-600 hover:bg-slate-100 font-bold text-base leading-none">+</button>
+          <button onClick={() => setZoom(1)} className="text-xs text-slate-400 hover:text-slate-600 px-1">Reset</button>
+        </div>
         {result.bars.map(bar => (
-          <SectionBarDiagram key={bar.barIndex} bar={bar} colorMap={colorMap} />
+          <SectionBarDiagram key={bar.barIndex} bar={bar} colorMap={colorMap} zoom={zoom} />
         ))}
       </div>
 

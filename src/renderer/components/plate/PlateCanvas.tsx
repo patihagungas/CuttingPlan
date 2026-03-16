@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Stage, Layer, Rect, Line, Text, Group } from 'react-konva'
+import { Stage, Layer, Rect, Line, Text, Group, Circle } from 'react-konva'
 import type { PlateResult } from '../../types/plate'
 
 const PIECE_COLORS = [
@@ -12,24 +12,26 @@ interface Props {
   plate: PlateResult
   colorMap: Map<string, string>
   maxWidth?: number
+  zoom?: number
 }
 
 const PAD = 20
 const MAX_CANVAS = 640
 
-export function PlateCanvas({ plate, colorMap, maxWidth = MAX_CANVAS }: Props) {
+export function PlateCanvas({ plate, colorMap, maxWidth = MAX_CANVAS, zoom = 1 }: Props) {
   const [tooltip, setTooltip] = useState<string | null>(null)
 
-  const scale = Math.min(
+  const baseScale = Math.min(
     (maxWidth - PAD * 2) / Math.max(1, plate.stockWidth),
     (400 - PAD * 2) / Math.max(1, plate.stockHeight)
   )
+  const scale = baseScale * zoom
 
   const canvasW = plate.stockWidth * scale + PAD * 2
   const canvasH = plate.stockHeight * scale + PAD * 2
 
   return (
-    <div className="relative">
+    <div className="relative overflow-auto">
       {tooltip && (
         <div className="absolute top-2 left-2 z-10 bg-black/75 text-white text-xs rounded px-2 py-1 pointer-events-none">
           {tooltip}
@@ -96,6 +98,16 @@ export function PlateCanvas({ plate, colorMap, maxWidth = MAX_CANVAS }: Props) {
                 {p.rotated && w > 18 && h > 18 && (
                   <Text x={x + 2} y={y + 2} text="R" fontSize={8} fill="rgba(255,255,255,0.6)" />
                 )}
+                {/* Bolt holes */}
+                {p.boltHoles && p.boltHoles.map((hole, hi) => {
+                  const hx = x + hole.x * scale
+                  const hy = y + hole.y * scale
+                  const hr = Math.max(2, (hole.diameter / 2) * scale)
+                  return (
+                    <Circle key={hi} x={hx} y={hy} radius={hr}
+                      fill="white" stroke="rgba(0,0,0,0.6)" strokeWidth={0.5} />
+                  )
+                })}
               </Group>
             )
           })}
