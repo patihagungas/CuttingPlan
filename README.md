@@ -96,4 +96,7 @@ src/
 
 ## License
 
-Internal use — TFe Group.
+To whoever want to use it. please use it wisely. i dont take full credit for this one. i just want to enjoy my work.
+Thanks 
+
+You can give the Credit to yourself XD 
