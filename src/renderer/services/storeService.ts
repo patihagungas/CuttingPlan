@@ -8,7 +8,7 @@ declare global {
       deleteProject: (id: string) => Promise<void>
       getProject: (id: string) => Promise<Project | undefined>
       saveFile: (buffer: ArrayBuffer, defaultName: string) => Promise<{ success: boolean; filePath?: string }>
-      openFile: () => Promise<{ buffer: ArrayBuffer; name: string } | null>
+      openFile: () => Promise<Array<{ buffer: ArrayBuffer; name: string }> | null>
     }
   }
 }

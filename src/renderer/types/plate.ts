@@ -47,8 +47,9 @@ export interface PlacedRect {
   width: number
   height: number
   rotated: boolean
-  contour?: Contour2D[]   // polygon points relative to piece origin (0,0), after rotation
-  boltHoles?: BoltHole[]  // bolt hole positions relative to piece origin (0,0), after rotation
+  contour?: Contour2D[]        // polygon points relative to piece origin (0,0), after rotation
+  pairedContour?: Contour2D[]  // second triangle's contour when two half-fill pieces are paired
+  boltHoles?: BoltHole[]       // bolt hole positions relative to piece origin (0,0), after rotation
 }
 
 export interface PlateResult {

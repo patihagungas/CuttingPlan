@@ -5,12 +5,13 @@ import { Button } from '../components/shared/Button'
 import { Modal } from '../components/shared/Modal'
 import { PlateCutListEditor } from '../components/plate/PlateCutListEditor'
 import { PlateResultPanel } from '../components/plate/PlateResultPanel'
+import { PlateDetailModal } from '../components/plate/PlateDetailModal'
 import { useProjectContext } from '../context/ProjectContext'
 import { runGuillotineCut } from '../algorithms/guillotineCut'
 import { exportPlatePlan, parsePlateExcel, generateTemplate } from '../services/excelService'
 import { parseNc1 } from '../services/nc1Service'
 import { storeService } from '../services/storeService'
-import type { PlatePlanData } from '../types/plate'
+import type { PlatePlanData, PlateItem } from '../types/plate'
 
 export function PlatePlanPage() {
   const { id: projectId, planId } = useParams<{ id: string; planId: string }>()
@@ -25,6 +26,7 @@ export function PlatePlanPage() {
   const [importWarnings, setImportWarnings] = useState<string[]>([])
   const [showImportModal, setShowImportModal] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [detailItem, setDetailItem] = useState<PlateItem | null>(null)
 
   useEffect(() => {
     if (plan?.plateData) setData({ ...plan.plateData })
@@ -50,22 +52,35 @@ export function PlatePlanPage() {
   }
 
   const handleImport = async () => {
-    const file = await storeService.openFile()
-    if (!file) return
-    const isNc1 = /\.(nc1?|dstv)$/i.test(file.name)
-    if (isNc1) {
-      const { plates, warnings } = parseNc1(file.buffer)
-      setData(d => d ? { ...d, items: [...d.items, ...plates] } : d)
-      if (warnings.length > 0) { setImportWarnings(warnings); setShowImportModal(true) }
-      else if (plates.length === 0) { setImportWarnings(['No plate items found in NC1 file. Plate pieces must use PL or FL profile prefix (e.g. PL10x200x400).']); setShowImportModal(true) }
-    } else {
-      const { items, stock, warnings } = parsePlateExcel(file.buffer)
-      setData(d => d ? {
-        ...d,
-        items: [...d.items, ...items],
-        ...(stock ? { stockPlate: stock } : {})
-      } : d)
-      if (warnings.length > 0) { setImportWarnings(warnings); setShowImportModal(true) }
+    const files = await storeService.openFile()
+    if (!files || files.length === 0) return
+
+    const allPlates: PlateItem[] = []
+    const allWarnings: string[] = []
+
+    for (const file of files) {
+      const isNc1 = /\.(nc1?|dstv)$/i.test(file.name)
+      if (isNc1) {
+        const { plates, warnings } = parseNc1(file.buffer)
+        allPlates.push(...plates)
+        allWarnings.push(...warnings)
+      } else {
+        // Excel — only handle first selected file
+        const { items, stock, warnings } = parsePlateExcel(file.buffer)
+        setData(d => d ? { ...d, items: [...d.items, ...items], ...(stock ? { stockPlate: stock } : {}) } : d)
+        if (warnings.length > 0) { setImportWarnings(warnings); setShowImportModal(true) }
+        return
+      }
+    }
+
+    if (allPlates.length > 0) {
+      setData(d => d ? { ...d, items: [...d.items, ...allPlates] } : d)
+    }
+    if (allWarnings.length > 0) {
+      setImportWarnings(allWarnings); setShowImportModal(true)
+    } else if (allPlates.length === 0) {
+      setImportWarnings(['No plate items found in selected NC1 files. Plate pieces must use PL or FL profile prefix (e.g. PL10).'])
+      setShowImportModal(true)
     }
   }
 
@@ -115,7 +130,7 @@ export function PlatePlanPage() {
                   <input
                     type="number"
                     className="w-full border border-slate-200 rounded px-2 py-1.5 text-right"
-                    value={(sp as Record<string, number>)[key]}
+                    value={(sp as unknown as Record<string, number>)[key]}
                     onChange={e => setData(d => d ? { ...d, stockPlate: { ...d.stockPlate, [key]: Number(e.target.value) }, result: null } : d)}
                     min={0}
                   />
@@ -138,6 +153,7 @@ export function PlatePlanPage() {
             <PlateCutListEditor
               items={data.items}
               onChange={items => setData(d => d ? { ...d, items, result: null } : d)}
+              onViewDetail={item => setDetailItem(item)}
             />
           </div>
 
@@ -177,6 +193,10 @@ export function PlatePlanPage() {
           </div>
         </div>
       </Modal>
+
+      {detailItem && (
+        <PlateDetailModal item={detailItem} onClose={() => setDetailItem(null)} />
+      )}
     </PageShell>
   )
 }

@@ -21,7 +21,6 @@ export interface Nc1Piece {
   assemblyMark: string
   mainPartMark: string
   steelGrade: string
-  profileDepth: number
   quantity: number
   profile: string       // e.g. "PL12", "IPE200", "HEA300"
   // Data block
@@ -52,6 +51,44 @@ function parseNum(s: string): number {
 
 function isPlateProfile(profile: string): boolean {
   return /^(PL|FL)\d/i.test(profile.trim())
+}
+
+// ─── Arc tessellation ─────────────────────────────────────────────────────────
+// In NC1, AK segments with a non-zero radius (3rd column) are circular arcs.
+// This converts an arc from (x1,y1) to (x2,y2) with radius R into polygon pts.
+function tessellateArc(
+  x1: number, y1: number,
+  x2: number, y2: number,
+  R: number,
+): Nc1Contour[] {
+  const r = Math.abs(R)
+  const dx = x2 - x1, dy = y2 - y1
+  const dist = Math.sqrt(dx * dx + dy * dy)
+  if (r < 0.01 || dist < 0.01) return [{ x: x2, y: y2 }]
+  if (dist > 2 * r + 1.0) return [{ x: x2, y: y2 }]
+
+  const halfChord = dist / 2
+  const d = Math.sqrt(Math.max(0, r * r - halfChord * halfChord))
+  const ux = -dy / dist, uy = dx / dist // unit perp to chord
+
+  // Positive R → center to the left of travel (CCW), negative R → right (CW)
+  const sign = R >= 0 ? 1 : -1
+  const cx = (x1 + x2) / 2 + sign * d * ux
+  const cy = (y1 + y2) / 2 + sign * d * uy
+
+  const theta1 = Math.atan2(y1 - cy, x1 - cx)
+  const theta2 = Math.atan2(y2 - cy, x2 - cx)
+  let sweep = theta2 - theta1
+  if (R >= 0) { while (sweep <= 0) sweep += 2 * Math.PI }
+  else        { while (sweep >= 0) sweep -= 2 * Math.PI }
+
+  const steps = Math.max(6, Math.ceil(Math.abs(sweep) * 18 / Math.PI)) // ~10° each
+  const pts: Nc1Contour[] = []
+  for (let j = 1; j <= steps; j++) {
+    const theta = theta1 + (j / steps) * sweep
+    pts.push({ x: cx + r * Math.cos(theta), y: cy + r * Math.sin(theta) })
+  }
+  return pts
 }
 
 // ─── Main parser ─────────────────────────────────────────────────────────────
@@ -87,11 +124,11 @@ export function parseNc1(buffer: ArrayBuffer): Nc1ParseResult {
       continue
     }
 
-    const pieceMark    = headerLines[0]
-    const assemblyMark = headerLines[1]
+    // DSTV NC1 header: [0]=order [1]=pieceMark [2]=drawingMark [3]=phaseMark [4]=steelGrade [5]=quantity [6]=profile
+    const assemblyMark = headerLines[0]
+    const pieceMark    = headerLines[1]
     const mainPartMark = headerLines[2]
-    const steelGrade   = headerLines[3]
-    const profileDepth = parseNum(headerLines[4])
+    const steelGrade   = headerLines[4]
     const quantity     = Math.max(1, Math.round(parseNum(headerLines[5])))
     const profile      = headerLines[6].trim()
 
@@ -128,24 +165,61 @@ export function parseNc1(buffer: ArrayBuffer): Nc1ParseResult {
     // Skip blank lines between data block and sections
     while (i < rawLines.length && rawLines[i].trim() === '') i++
 
-    // AK section (outer contour)
-    // Format: first line is "v  X  Y  ..." subsequent lines are "X  Y  ..."
+    // AK section (outer contour) — supports straight lines (R=0) and arcs (R≠0).
+    // NC1 format: v-line R = closing arc radius (last→first); each other line's R = arc into that point.
     const contour: Nc1Contour[] = []
     if (i < rawLines.length && rawLines[i].trim() === 'AK') {
       i++ // skip "AK"
+      const akRaw: Array<{ x: number; y: number; r: number }> = []
+      let closingR = 0
+      let isFirstVLine = true
+
       while (i < rawLines.length) {
         const akLine = rawLines[i].trim()
-        // Stop at any section header
         if (akLine === 'IK' || akLine === 'BO' || akLine === 'EN' || akLine.startsWith('**')) break
         i++
         if (akLine === '') continue
         const parts = akLine.split(/\s+/).filter(Boolean)
         if (akLine.startsWith('v') && parts.length >= 3) {
-          // First line format: v  X  Y  ...
-          contour.push({ x: parseNum(parts[1]), y: parseNum(parts[2]) })
+          const x = parseNum(parts[1]), y = parseNum(parts[2])
+          const r = parts.length >= 4 ? parseNum(parts[3]) : 0
+          if (isFirstVLine) {
+            closingR = r  // v-line R = closing arc (last point → first point)
+            akRaw.push({ x, y, r: 0 })
+            isFirstVLine = false
+          } else {
+            akRaw.push({ x, y, r })
+          }
         } else if (parts.length >= 2 && /^-?\d/.test(parts[0])) {
-          // Subsequent lines format: X  Y  ...
-          contour.push({ x: parseNum(parts[0]), y: parseNum(parts[1]) })
+          akRaw.push({
+            x: parseNum(parts[0]),
+            y: parseNum(parts[1]),
+            r: parts.length >= 3 ? parseNum(parts[2]) : 0,
+          })
+        }
+      }
+
+      // Strip duplicate closing point
+      if (akRaw.length >= 2) {
+        const f = akRaw[0], l = akRaw[akRaw.length - 1]
+        if (Math.abs(f.x - l.x) < 0.01 && Math.abs(f.y - l.y) < 0.01) akRaw.pop()
+      }
+
+      if (akRaw.length >= 2) {
+        contour.push({ x: akRaw[0].x, y: akRaw[0].y })
+        for (let k = 1; k < akRaw.length; k++) {
+          const prev = akRaw[k - 1], curr = akRaw[k]
+          if (Math.abs(curr.r) < 0.01) {
+            contour.push({ x: curr.x, y: curr.y })
+          } else {
+            contour.push(...tessellateArc(prev.x, prev.y, curr.x, curr.y, curr.r))
+          }
+        }
+        // Closing arc from last point back to first
+        if (Math.abs(closingR) > 0.01) {
+          const last = akRaw[akRaw.length - 1], first = akRaw[0]
+          const arcPts = tessellateArc(last.x, last.y, first.x, first.y, closingR)
+          contour.push(...arcPts.slice(0, -1)) // exclude final duplicate of first point
         }
       }
     }
@@ -205,7 +279,7 @@ export function parseNc1(buffer: ArrayBuffer): Nc1ParseResult {
 
     pieces.push({
       fileName, pieceMark, assemblyMark, mainPartMark, steelGrade,
-      profileDepth, quantity, profile,
+      quantity, profile,
       length: pieceHeight > 0 ? pieceHeight : length,
       width: pieceWidth > 0 ? pieceWidth : width,
       thickness, skewAngle, weight, surfaceArea,

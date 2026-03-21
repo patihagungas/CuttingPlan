@@ -58,19 +58,28 @@ export function PlateCanvas({ plate, colorMap, maxWidth = MAX_CANVAS, zoom = 1 }
             const h = p.height * scale
             const label = p.partName.length > 12 ? p.partName.slice(0, 12) + '…' : p.partName
             const hasContour = p.contour && p.contour.length >= 3
+            // NC1 contour Y=0 is bottom of piece; flip for screen (canvas Y increases downward)
             const polyPoints = hasContour
-              ? p.contour!.flatMap(pt => [x + pt.x * scale, y + pt.y * scale])
+              ? p.contour!.flatMap(pt => [x + pt.x * scale, y + (p.height - pt.y) * scale])
+              : []
+
+            const hasPaired = p.pairedContour && p.pairedContour.length >= 3
+            const pairedPoints = hasPaired
+              ? p.pairedContour!.flatMap(pt => [x + pt.x * scale, y + (p.height - pt.y) * scale])
               : []
 
             return (
               <Group key={idx}
-                onMouseEnter={() => setTooltip(`${p.partName}${p.mark ? ` [${p.mark}]` : ''} — ${p.width}×${p.height}mm${p.rotated ? ' (R)' : ''}`)}
+                onMouseEnter={() => setTooltip(`${p.partName}${p.mark ? ` [${p.mark}]` : ''} — ${p.width}×${p.height}mm${p.rotated ? ' (R)' : ''}${hasPaired ? ' ×2' : ''}`)}
                 onMouseLeave={() => setTooltip(null)}
               >
                 {hasContour
                   ? <Line points={polyPoints} closed fill={color} opacity={0.85} strokeWidth={0} />
                   : <Rect x={x} y={y} width={Math.max(1, w - 1)} height={Math.max(1, h - 1)} fill={color} cornerRadius={Math.min(2, Math.max(0, (w - 1) / 2, (h - 1) / 2))} opacity={0.85} />
                 }
+                {hasPaired && (
+                  <Line points={pairedPoints} closed fill={color} opacity={0.7} strokeWidth={0} />
+                )}
                 {w > 25 && h > 16 && (
                   <Text
                     x={x + 3} y={y + h / 2 - 9}
@@ -98,10 +107,10 @@ export function PlateCanvas({ plate, colorMap, maxWidth = MAX_CANVAS, zoom = 1 }
                 {p.rotated && w > 18 && h > 18 && (
                   <Text x={x + 2} y={y + 2} text="R" fontSize={8} fill="rgba(255,255,255,0.6)" />
                 )}
-                {/* Bolt holes */}
+                {/* Bolt holes — Y flipped same as contour (NC1 Y=0 at bottom) */}
                 {p.boltHoles && p.boltHoles.map((hole, hi) => {
                   const hx = x + hole.x * scale
-                  const hy = y + hole.y * scale
+                  const hy = y + (p.height - hole.y) * scale
                   const hr = Math.max(2, (hole.diameter / 2) * scale)
                   return (
                     <Circle key={hi} x={hx} y={hy} radius={hr}

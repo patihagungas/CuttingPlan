@@ -11,7 +11,7 @@ import { runFirstFitDecreasing } from '../algorithms/firstFitDecreasing'
 import { exportSectionPlan, parseSectionExcel, generateTemplate } from '../services/excelService'
 import { parseNc1 } from '../services/nc1Service'
 import { storeService } from '../services/storeService'
-import type { SectionPlanData, StockBar } from '../types/section'
+import type { SectionPlanData, StockBar, SectionItem } from '../types/section'
 
 export function SectionPlanPage() {
   const { id: projectId, planId } = useParams<{ id: string; planId: string }>()
@@ -52,22 +52,34 @@ export function SectionPlanPage() {
   }
 
   const handleImport = async () => {
-    const file = await storeService.openFile()
-    if (!file) return
-    const isNc1 = /\.(nc1?|dstv)$/i.test(file.name)
-    if (isNc1) {
-      const { sections, warnings } = parseNc1(file.buffer)
-      setData(d => d ? { ...d, items: [...d.items, ...sections] } : d)
-      if (warnings.length > 0) { setImportWarnings(warnings); setShowImportModal(true) }
-      else if (sections.length === 0) { setImportWarnings(['No section items found in NC1 file.']); setShowImportModal(true) }
-    } else {
-      const { items, stocks, warnings } = parseSectionExcel(file.buffer)
-      setData(d => d ? {
-        ...d,
-        items: [...d.items, ...items],
-        stockLengths: stocks.length > 0 ? stocks : d.stockLengths
-      } : d)
-      if (warnings.length > 0) { setImportWarnings(warnings); setShowImportModal(true) }
+    const files = await storeService.openFile()
+    if (!files || files.length === 0) return
+
+    const allSections: SectionItem[] = []
+    const allWarnings: string[] = []
+
+    for (const file of files) {
+      const isNc1 = /\.(nc1?|dstv)$/i.test(file.name)
+      if (isNc1) {
+        const { sections, warnings } = parseNc1(file.buffer)
+        allSections.push(...sections)
+        allWarnings.push(...warnings)
+      } else {
+        const { items, stocks, warnings } = parseSectionExcel(file.buffer)
+        setData(d => d ? { ...d, items: [...d.items, ...items], stockLengths: stocks.length > 0 ? stocks : d.stockLengths } : d)
+        if (warnings.length > 0) { setImportWarnings(warnings); setShowImportModal(true) }
+        return
+      }
+    }
+
+    if (allSections.length > 0) {
+      setData(d => d ? { ...d, items: [...d.items, ...allSections] } : d)
+    }
+    if (allWarnings.length > 0) {
+      setImportWarnings(allWarnings); setShowImportModal(true)
+    } else if (allSections.length === 0) {
+      setImportWarnings(['No section items found in selected NC1 files.'])
+      setShowImportModal(true)
     }
   }
 

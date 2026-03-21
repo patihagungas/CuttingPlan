@@ -5,6 +5,7 @@ import { Button } from '../shared/Button'
 interface Props {
   items: PlateItem[]
   onChange: (items: PlateItem[]) => void
+  onViewDetail?: (item: PlateItem) => void
 }
 
 const empty = (): PlateItem => ({
@@ -12,7 +13,7 @@ const empty = (): PlateItem => ({
   width: 0, height: 0, quantity: 1, canRotate: true, mark: ''
 })
 
-export function PlateCutListEditor({ items, onChange }: Props) {
+export function PlateCutListEditor({ items, onChange, onViewDetail }: Props) {
   const update = (id: string, field: keyof PlateItem, value: string | number | boolean) => {
     onChange(items.map(i => i.id === id ? { ...i, [field]: value } : i))
   }
@@ -85,6 +86,9 @@ export function PlateCutListEditor({ items, onChange }: Props) {
                 </td>
                 <td className="px-2 py-1">
                   <div className="flex gap-1">
+                    {onViewDetail && (item.width > 0 || item.height > 0) && (
+                      <button onClick={() => onViewDetail(item)} title="View Drawing" className="text-slate-400 hover:text-blue-600 px-1 rounded hover:bg-blue-50">📐</button>
+                    )}
                     <button onClick={() => duplicate(item)} title="Duplicate" className="text-slate-400 hover:text-blue-600 px-1 rounded hover:bg-blue-50">⧉</button>
                     <button onClick={() => remove(item.id)} title="Delete row" className="text-red-400 hover:text-white hover:bg-red-500 font-bold px-1.5 py-0.5 rounded text-xs transition-colors">✕</button>
                   </div>

@@ -46,14 +46,21 @@ ipcMain.handle('dialog:saveFile', async (_, buffer: ArrayBuffer, defaultName: st
 ipcMain.handle('dialog:openFile', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
     filters: [
+      { name: 'NC1 / Steel Files', extensions: ['nc1', 'nc', 'dstv'] },
       { name: 'Excel Files', extensions: ['xlsx', 'xls'] },
       { name: 'All Files', extensions: ['*'] },
     ],
-    properties: ['openFile'],
+    properties: ['openFile', 'multiSelections'],
   })
   if (canceled || !filePaths.length) return null
-  const buffer = await readFile(filePaths[0])
-  return { buffer: buffer.buffer, name: filePaths[0] }
+  const files = await Promise.all(
+    filePaths.map(async (filePath) => {
+      const buf = await readFile(filePath)
+      const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+      return { buffer: ab, name: filePath }
+    })
+  )
+  return files
 })
 
 app.whenReady().then(() => {
