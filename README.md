@@ -1,4 +1,4 @@
-# CuttingPlan
+# CuttingPlan (ON PROGRESS)
 
 A desktop application for steel cutting optimization, supporting both 1D section steel and 2D plate nesting.
 
