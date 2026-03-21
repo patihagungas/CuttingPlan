@@ -162,107 +162,114 @@ export function parseNc1(buffer: ArrayBuffer): Nc1ParseResult {
       continue
     }
 
-    // Skip blank lines between data block and sections
-    while (i < rawLines.length && rawLines[i].trim() === '') i++
-
-    // AK section (outer contour) — supports straight lines (R=0) and arcs (R≠0).
-    // NC1 format: v-line R = closing arc radius (last→first); each other line's R = arc into that point.
+    // Parse all sections (AK, IK, BO) in whatever order they appear, until EN or next piece.
+    // DSTV files may place IK before AK and may have multiple IK blocks.
     const contour: Nc1Contour[] = []
-    if (i < rawLines.length && rawLines[i].trim() === 'AK') {
-      i++ // skip "AK"
-      const akRaw: Array<{ x: number; y: number; r: number }> = []
-      let closingR = 0
-      let isFirstVLine = true
-
-      while (i < rawLines.length) {
-        const akLine = rawLines[i].trim()
-        if (akLine === 'IK' || akLine === 'BO' || akLine === 'EN' || akLine.startsWith('**')) break
-        i++
-        if (akLine === '') continue
-        const parts = akLine.split(/\s+/).filter(Boolean)
-        if (akLine.startsWith('v') && parts.length >= 3) {
-          const x = parseNum(parts[1]), y = parseNum(parts[2])
-          const r = parts.length >= 4 ? parseNum(parts[3]) : 0
-          if (isFirstVLine) {
-            closingR = r  // v-line R = closing arc (last point → first point)
-            akRaw.push({ x, y, r: 0 })
-            isFirstVLine = false
-          } else {
-            akRaw.push({ x, y, r })
-          }
-        } else if (parts.length >= 2 && /^-?\d/.test(parts[0])) {
-          akRaw.push({
-            x: parseNum(parts[0]),
-            y: parseNum(parts[1]),
-            r: parts.length >= 3 ? parseNum(parts[2]) : 0,
-          })
-        }
-      }
-
-      // Strip duplicate closing point
-      if (akRaw.length >= 2) {
-        const f = akRaw[0], l = akRaw[akRaw.length - 1]
-        if (Math.abs(f.x - l.x) < 0.01 && Math.abs(f.y - l.y) < 0.01) akRaw.pop()
-      }
-
-      if (akRaw.length >= 2) {
-        contour.push({ x: akRaw[0].x, y: akRaw[0].y })
-        for (let k = 1; k < akRaw.length; k++) {
-          const prev = akRaw[k - 1], curr = akRaw[k]
-          if (Math.abs(curr.r) < 0.01) {
-            contour.push({ x: curr.x, y: curr.y })
-          } else {
-            contour.push(...tessellateArc(prev.x, prev.y, curr.x, curr.y, curr.r))
-          }
-        }
-        // Closing arc from last point back to first
-        if (Math.abs(closingR) > 0.01) {
-          const last = akRaw[akRaw.length - 1], first = akRaw[0]
-          const arcPts = tessellateArc(last.x, last.y, first.x, first.y, closingR)
-          contour.push(...arcPts.slice(0, -1)) // exclude final duplicate of first point
-        }
-      }
-    }
-
-    // Skip IK section (inner contours / cutouts — not used for nesting)
-    while (i < rawLines.length && rawLines[i].trim() === '') i++
-    if (i < rawLines.length && rawLines[i].trim() === 'IK') {
-      i++ // skip "IK"
-      while (i < rawLines.length) {
-        const l = rawLines[i].trim()
-        if (l === 'BO' || l === 'EN' || l.startsWith('**')) break
-        i++
-      }
-    }
-
-    // Skip blank lines before BO
-    while (i < rawLines.length && rawLines[i].trim() === '') i++
-
-    // BO section (bolt holes) — all lines start with "v  Xs  Y  D"
     const boltHoles: Nc1BoltHole[] = []
-    if (i < rawLines.length && rawLines[i].trim() === 'BO') {
-      i++ // skip "BO"
-      while (i < rawLines.length) {
-        const boLine = rawLines[i].trim()
-        if (boLine === 'EN' || boLine.startsWith('**')) break
-        i++
-        if (boLine.startsWith('v')) {
-          const parts = boLine.split(/\s+/).filter(Boolean)
-          // "v  80.51s  45.00  26.00"  (X suffix can be 's' or 'o')
-          if (parts.length >= 4) {
-            boltHoles.push({
-              x: parseNum(parts[1]),
-              y: parseNum(parts[2]),
-              diameter: parseNum(parts[3]),
+
+    while (i < rawLines.length) {
+      // Skip blank lines
+      while (i < rawLines.length && rawLines[i].trim() === '') i++
+      if (i >= rawLines.length) break
+
+      const sectionTag = rawLines[i].trim()
+      if (sectionTag === 'EN' || sectionTag.startsWith('**')) break
+
+      i++ // consume section tag line
+
+      if (sectionTag === 'AK') {
+        // Outer contour — straight lines (r=0) and arcs (r≠0)
+        const akRaw: Array<{ x: number; y: number; r: number }> = []
+        let closingR = 0
+        let isFirstVLine = true
+
+        while (i < rawLines.length) {
+          const akLine = rawLines[i].trim()
+          if (akLine === 'AK' || akLine === 'IK' || akLine === 'BO' || akLine === 'EN' || akLine.startsWith('**')) break
+          i++
+          if (akLine === '') continue
+          const parts = akLine.split(/\s+/).filter(Boolean)
+          if (akLine.startsWith('v') && parts.length >= 3) {
+            const x = parseNum(parts[1]), y = parseNum(parts[2])
+            const r = parts.length >= 4 ? parseNum(parts[3]) : 0
+            if (isFirstVLine) {
+              closingR = r
+              akRaw.push({ x, y, r: 0 })
+              isFirstVLine = false
+            } else {
+              akRaw.push({ x, y, r })
+            }
+          } else if (parts.length >= 2 && /^-?\d/.test(parts[0])) {
+            akRaw.push({
+              x: parseNum(parts[0]),
+              y: parseNum(parts[1]),
+              r: parts.length >= 3 ? parseNum(parts[2]) : 0,
             })
           }
         }
+
+        // Strip duplicate closing point
+        if (akRaw.length >= 2) {
+          const f = akRaw[0], l = akRaw[akRaw.length - 1]
+          if (Math.abs(f.x - l.x) < 0.01 && Math.abs(f.y - l.y) < 0.01) akRaw.pop()
+        }
+
+        if (akRaw.length >= 2) {
+          contour.push({ x: akRaw[0].x, y: akRaw[0].y })
+          for (let k = 1; k < akRaw.length; k++) {
+            const prev = akRaw[k - 1], curr = akRaw[k]
+            if (Math.abs(curr.r) < 0.01) {
+              contour.push({ x: curr.x, y: curr.y })
+            } else {
+              contour.push(...tessellateArc(prev.x, prev.y, curr.x, curr.y, curr.r))
+            }
+          }
+          if (Math.abs(closingR) > 0.01) {
+            const last = akRaw[akRaw.length - 1], first = akRaw[0]
+            const arcPts = tessellateArc(last.x, last.y, first.x, first.y, closingR)
+            contour.push(...arcPts.slice(0, -1))
+          }
+        }
+
+      } else if (sectionTag === 'IK') {
+        // Inner contour (cutout) — skip entirely, may appear multiple times
+        while (i < rawLines.length) {
+          const l = rawLines[i].trim()
+          if (l === 'AK' || l === 'IK' || l === 'BO' || l === 'EN' || l.startsWith('**')) break
+          i++
+        }
+
+      } else if (sectionTag === 'BO') {
+        // Bolt holes: "v  Xs  Y  D" (X suffix can be 's' or 'o')
+        while (i < rawLines.length) {
+          const boLine = rawLines[i].trim()
+          if (boLine === 'EN' || boLine.startsWith('**')) break
+          i++
+          if (boLine.startsWith('v')) {
+            const parts = boLine.split(/\s+/).filter(Boolean)
+            if (parts.length >= 4) {
+              boltHoles.push({
+                x: parseNum(parts[1]),
+                y: parseNum(parts[2]),
+                diameter: parseNum(parts[3]),
+              })
+            }
+          }
+        }
+
+      } else {
+        // Unknown section — skip until next known section tag
+        while (i < rawLines.length) {
+          const l = rawLines[i].trim()
+          if (l === 'AK' || l === 'IK' || l === 'BO' || l === 'EN' || l.startsWith('**')) break
+          i++
+        }
       }
     }
 
-    // Advance to EN
+    // Advance past EN
     while (i < rawLines.length && rawLines[i].trim() !== 'EN') i++
-    if (i < rawLines.length) i++ // skip "EN"
+    if (i < rawLines.length) i++
 
     // Determine bounding box from contour if available, else use data block
     let pieceWidth = width
